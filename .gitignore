@@ -1,0 +1,13 @@
+#ignore data dirs
+.data/
+*/data/
+
+#ignore ipynb checkpoints
+.ipynb_checkpoints/
+
+#ignore slurm output files
+*.err*
+*.out*
+
+#ignore swap files
+*.swp
