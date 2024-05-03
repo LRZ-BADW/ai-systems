@@ -18,3 +18,7 @@ data/
 
 #ignore pycache
 __pycache__/
+
+#ignore logs
+logs/
+*/logs/
