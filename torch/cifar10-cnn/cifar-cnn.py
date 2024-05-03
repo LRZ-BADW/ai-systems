@@ -43,8 +43,8 @@ class Model(nn.Module):
 
 
 # download the data
-train_dataset = torchvision.datasets.CIFAR10(root='../data', train=True, transform=transforms.ToTensor(), download=True)
-test_dataset = torchvision.datasets.CIFAR10(root='../data', train=False, transform=transforms.ToTensor(), download=True)
+train_dataset = torchvision.datasets.CIFAR10(root='../../data', train=True, transform=transforms.ToTensor(), download=True)
+test_dataset = torchvision.datasets.CIFAR10(root='../../data', train=False, transform=transforms.ToTensor(), download=True)
 
 # transform to DataLoader
 train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
@@ -64,7 +64,7 @@ def train_and_test_CNN(device):
     dtype = torch.float
 
     # Additional information for checkpointing
-    PATH = "cifar10-cnn/cnn_model.pt"
+    PATH = "/workspace/torch/cifar10-cnn/cnn_model.pt"
 
     # Load the checkpoint
     if(os.path.exists(PATH)):

@@ -6,6 +6,6 @@
 #SBATCH -e cifar-cnn.err%J
 
 srun \
---container-mounts='../:/workspace' \
+--container-mounts='../../:/workspace' \
 --container-image='/dss/dsshome1/0D/di93fuj/containerImages/flash.sqsh' \
-python /workspace/cifar10-cnn/cifar-cnn.py
+python /workspace/torch/cifar10-cnn/cifar-cnn.py
