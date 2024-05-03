@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:2
 #SBATCH -o horovod-exercise.out%J
 #SBATCH -e horovod-exercise.err%J
-#SBATCH --container-mounts='../:/workspace'
-#SBATCH --container-image='/dss/dsshome1/0D/di93fuj/containerImages/custom.sqsh'
+#SBATCH --container-mounts='../../:/workspace'
+#SBATCH --container-image='/dss/dsshome1/0D/di93fuj/containerImages/flash.sqsh'
 
-horovodrun -np 2 python /workspace/exercise2.py
+horovodrun -np 2 python /workspace/torch/horovod/horovod-exercise.py
