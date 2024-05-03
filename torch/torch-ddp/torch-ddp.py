@@ -20,8 +20,8 @@ def train_and_test(gpu, gpus, nodes, nr, world_size):
     torch.manual_seed(0)
 
     # Define datasets
-    train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, transform=transforms.ToTensor(), download=True)
-    test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False, transform=transforms.ToTensor(), download=True)
+    train_dataset = torchvision.datasets.CIFAR10(root='../../data', train=True, transform=transforms.ToTensor(), download=True)
+    test_dataset = torchvision.datasets.CIFAR10(root='../../data', train=False, transform=transforms.ToTensor(), download=True)
 
     # Partition datasets among workers using DistributedSampler
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
