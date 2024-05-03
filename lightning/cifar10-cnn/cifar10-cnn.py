@@ -128,7 +128,7 @@ def runCode(gpus=0):
         accelerator = 'gpu'
         devices = gpus
         
-    logger = TensorBoardLogger("logs", name=modelName)
+    logger = TensorBoardLogger("/workspace/lightning/cifar10-cnn/logs", name=modelName)
     
     checkpoint_callback = ModelCheckpoint(dirpath='/workspace/lightning/cifar10-cnn/saved_models/',
                                           filename=modelName+'-{epoch:02d}',
