@@ -94,8 +94,7 @@ def runCNNmodel(modelName='resnet', gpus=0):
 
     model = cnnModel(modelName, learning_rate, num_classes)
     
-    logger = TensorBoardLogger("/workspace/lightning/ddp/logs", name=modelName+"_ddp")
-    logger = None
+    logger = TensorBoardLogger("./logs", name=modelName+"_ddp")
     accelerator = 'gpu'
     devices = gpus
     
