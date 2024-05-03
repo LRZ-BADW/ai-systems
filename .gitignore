@@ -1,6 +1,7 @@
 #ignore data dirs
 .data/
 */data/
+data/
 
 #ignore ipynb checkpoints
 .ipynb_checkpoints/
@@ -11,3 +12,9 @@
 
 #ignore swap files
 *.swp
+
+#ignore saved models
+*.pt
+
+#ignore pycache
+__pycache__/
