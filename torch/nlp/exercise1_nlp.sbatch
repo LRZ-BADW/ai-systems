@@ -8,5 +8,5 @@
 
 srun \
 --container-mounts='./:/workspace' \
---container-image='/dss/dsshome1/0D/di93fuj/containerImages/custom.sqsh' \
+--container-image='/dss/dsshome1/lxc03/di82hod/pytorch+lightning+custom.sqsh' \
 python /workspace/exercise1_nlp.py
