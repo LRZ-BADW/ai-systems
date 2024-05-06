@@ -19,8 +19,8 @@ if torch.cuda.is_available():
       torch.cuda.set_device(hvd.local_rank())
 
 # Define datasets
-train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, transform=transforms.ToTensor(), download=True)
-test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False, transform=transforms.ToTensor(), download=True)
+train_dataset = torchvision.datasets.CIFAR10(root='../../data', train=True, transform=transforms.ToTensor(), download=True)
+test_dataset = torchvision.datasets.CIFAR10(root='../../data', train=False, transform=transforms.ToTensor(), download=True)
 
 # Partition datasets among workers using DistributedSampler
 train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank())

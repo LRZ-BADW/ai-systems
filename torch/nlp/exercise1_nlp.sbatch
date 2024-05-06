@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH -p test-v100x2 --qos=testing
+#SBATCH --partition=ADD_PARTITION_HERE
 #SBATCH --gres=gpu:1
 #SBATCH -o exercise1_nlp.out%J
 #SBATCH -e exercise1_nlp.err%J
@@ -8,5 +8,5 @@
 
 srun \
 --container-mounts='./:/workspace' \
---container-image='/dss/dsshome1/lxc03/di82hod/pytorch+lightning+custom.sqsh' \
+--container-image='path/to/your/image/image_name.sqsh' \
 python /workspace/exercise1_nlp.py

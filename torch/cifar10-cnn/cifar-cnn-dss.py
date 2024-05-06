@@ -62,9 +62,15 @@ def train_and_test_CNN(device):
 
     # Data type
     dtype = torch.float
+    
+    # Additional information for checkpointing
+    #PATH = "model_exercise1.pt" this part need to be change for dss
+    
+    # Define the directory outside of the container for saving files
+    save_dir = "/dss_data"
 
     # Additional information for checkpointing
-    PATH = "/workspace/torch/cifar10-cnn/cnn_model.pt"
+    PATH = os.path.join(save_dir, "model_exercise1.pt")
 
     # Load the checkpoint
     if(os.path.exists(PATH)):
