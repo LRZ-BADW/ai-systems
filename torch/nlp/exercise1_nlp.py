@@ -10,10 +10,11 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.utils.data import dataset
-from torchtext.datasets import WikiText2
-from torchtext.data.utils import get_tokenizer
-from torchtext.vocab import build_vocab_from_iterator
+#from torchtext.datasets import WikiText2
+#from torchtext.data.utils import get_tokenizer
+#from torchtext.vocab import build_vocab_from_iterator
 
+import data
 
 batch_size = 20
 eval_batch_size = 10
@@ -88,10 +89,10 @@ def generate_square_subsequent_mask(sz: int) -> Tensor:
     """Generates an upper-triangular matrix of ``-inf``, with zeros on ``diag``."""
     return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)
 
-def data_process(raw_text_iter: dataset.IterableDataset, vocab, tokenizer) -> Tensor:
-    """Converts raw text into a flat Tensor."""
-    data = [torch.tensor(vocab(tokenizer(item)), dtype=torch.long) for item in raw_text_iter]
-    return torch.cat(tuple(filter(lambda t: t.numel() > 0, data)))
+#def data_process(raw_text_iter: dataset.IterableDataset, vocab, tokenizer) -> Tensor:
+ #   """Converts raw text into a flat Tensor."""
+  #  data = [torch.tensor(vocab(tokenizer(item)), dtype=torch.long) for item in raw_text_iter]
+   # return torch.cat(tuple(filter(lambda t: t.numel() > 0, data)))
 
 def batchify(data: Tensor, bsz: int, device) -> Tensor:
     """Divides the data into ``bsz`` separate sequences, removing extra elements
@@ -183,23 +184,26 @@ def evaluate(model: nn.Module, eval_data: Tensor, device, criterion, ntokens) ->
 def train_and_test_transformer(device):
     print("Device: ", device)
 
-    train_iter = WikiText2(split='train')
-    tokenizer = get_tokenizer('basic_english')
-    vocab = build_vocab_from_iterator(map(tokenizer, train_iter), specials=['<unk>'])
-    vocab.set_default_index(vocab['<unk>'])
+    #train_iter = WikiText2(split='train', root=os.path.expanduser('/workspace/data'))
+    #tokenizer = get_tokenizer('basic_english')
+    #vocab = build_vocab_from_iterator(map(tokenizer, train_iter), specials=['<unk>'])
+    #vocab.set_default_index(vocab['<unk>'])
 
     # ``train_iter`` was "consumed" by the process of building the vocab,
     # so we have to create it again
-    train_iter, val_iter, test_iter = WikiText2()
-    train_data = data_process(train_iter, vocab, tokenizer)
-    val_data = data_process(val_iter, vocab, tokenizer)
-    test_data = data_process(test_iter, vocab, tokenizer)
+    #train_iter, val_iter, test_iter = WikiText2(root=os.path.expanduser('/workspace/data'))
+    #train_data = data_process(train_iter, vocab, tokenizer)
+    #val_data = data_process(val_iter, vocab, tokenizer)
+    #test_data = data_process(test_iter, vocab, tokenizer)
 
-    train_data = batchify(train_data, batch_size, device)  # shape ``[seq_len, batch_size]``
-    val_data = batchify(val_data, eval_batch_size, device)
-    test_data = batchify(test_data, eval_batch_size, device)
+    corpus = data.Corpus('./WikiText2/wikitext-2')
 
-    ntokens = len(vocab)  # size of vocabulary
+    train_data = batchify(corpus.train, batch_size, device)  # shape ``[seq_len, batch_size]``
+    val_data = batchify(corpus.valid, eval_batch_size, device)
+    test_data = batchify(corpus.test, eval_batch_size, device)
+
+    #ntokens = len(vocab)  # size of vocabulary
+    ntokens = len(corpus.dictionary)
 
     model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout).to(device)
     print ('Total parameters in model: {:,}'.format(get_total_params(model)))
@@ -242,15 +246,15 @@ def train_and_test_transformer(device):
     print('=' * 89)
 
 
-###### Part 1: Train on a CPU ######
+# ##### Part 1: Train on a CPU ######
 
 # Device configuration - cpu
-#device = torch.device('cpu')
+# device = torch.device('cpu')
 # Call train and test function
-#train_and_test_transformer(device)
+# train_and_test_transformer(device)
 
 
-###### Part 2: Train on a GPU ######
+# ##### Part 2: Train on a GPU ######
 
 # Device configuration - gpu/cuda
 device = torch.device('cuda')
