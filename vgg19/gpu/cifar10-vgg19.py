@@ -7,11 +7,17 @@ import argparse
 from torchvision import models
 import time
 
+def print_peak_memory(prefix, device):
+    if device == 0:
+        print(f"{prefix}: {torch.cuda.memory_allocated(device) // 1e6}MB ")
+        print("Max. "+f"{prefix}: {torch.cuda.max_memory_allocated(device) // 1e6}MB ")
+
 def train_and_validate(model, trainloader, valloader, criterion, optimizer, device, num_epochs):
     
     for epoch in range(num_epochs):
         # Training step
         train_loss = 0.0
+        timeStart = time.time()
         for i, data in enumerate(trainloader, 0):
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
@@ -19,8 +25,14 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             train_loss += loss.item()
+            if epoch==0:
+                print_peak_memory("Memory allocated before loss backward()", 0)
             loss.backward()
+            if epoch==0:
+                print_peak_memory("Memory allocated after loss backward() and before optimizer step()", 0)
             optimizer.step()
+            if epoch==0:
+                print_peak_memory("Memory allocated after optimizer step()", 0)
 
         # Validation step
         model.eval()
@@ -38,7 +50,9 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
 
-        print('Epoch: %d, Training Loss: %.3f, Validation Loss: %.3f, Validation Accuracy: %.3f %%' % (epoch + 1, train_loss / len(trainloader), val_loss / len(valloader), 100 * correct / total))
+        timeEnd = time.time()
+        print('Epoch: %d, Time: %f s, Training Loss: %.3f, Validation Loss: %.3f, Validation Accuracy: %.3f %%' % \
+              (epoch + 1, timeEnd-timeStart, train_loss / len(trainloader), val_loss / len(valloader), 100 * correct / total))
         model.train()
 
 def main(args):
@@ -66,6 +80,8 @@ def main(args):
     model = models.vgg19(num_classes=10)
     model = model.to(device)
 
+    print_peak_memory("Memory allocated after creating local model", 0)
+
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -89,7 +105,7 @@ def main(args):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-    print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
+    print('Accuracy of the network on the test images: %d %%' % (100 * correct / total))
 
 if __name__ == '__main__':
     

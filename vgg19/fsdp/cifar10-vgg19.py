@@ -11,6 +11,17 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 import os
 
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp.fully_sharded_data_parallel import (
+    CPUOffload,
+    BackwardPrefetch,
+)
+from torch.distributed.fsdp.wrap import (
+    size_based_auto_wrap_policy,
+    enable_wrap,
+    wrap,
+)
+
 def print_peak_memory(prefix, device):
     if device == 0:
         print("Max."+f"{prefix}: {torch.cuda.max_memory_allocated(device) // 1e6}MB ")
@@ -26,30 +37,30 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-def train_and_validate(model, trainloader, valloader, criterion, optimizer, device, num_epochs):
+def train_and_validate(model, trainloader, valloader, criterion, optimizer, rank, num_epochs):
 
     for epoch in range(num_epochs):
         # Training step
-        if device == 0:
+        if rank == 0:
             timeStart = time.time()
 
         trainloader.sampler.set_epoch(epoch)
-        ddp_train_loss = torch.zeros(2).to(device)
+        ddp_train_loss = torch.zeros(2).to(rank)
         for i, data in enumerate(trainloader, 0):
             inputs, labels = data
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels = inputs.to(rank), labels.to(rank)
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             optimizer.zero_grad()
             if epoch==0:
-                print_peak_memory("Memory allocated before loss backward()", device)
+                print_peak_memory("Memory allocated before loss backward()", rank)
             loss.backward()
             if epoch==0:
-                print_peak_memory("Memory allocated before optimizer step()", device)
+                print_peak_memory("Memory allocated before optimizer step()", rank)
             optimizer.step()
             if epoch==0:
-                print_peak_memory("Memory allocated after optimizer step()", device)
+                print_peak_memory("Memory allocated after optimizer step()", rank)
             ddp_train_loss[0] += loss.item()
             ddp_train_loss[1] += len(data)
 
@@ -60,11 +71,11 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
         ddp_correct = 0
         ddp_total = 0
         valloader.sampler.set_epoch(epoch)
-        ddp_val_loss = torch.zeros(2).to(device)
+        ddp_val_loss = torch.zeros(2).to(rank)
         with torch.no_grad():
             for data in valloader:
                 images, labels = data
-                images, labels = images.to(device), labels.to(device)
+                images, labels = images.to(rank), labels.to(rank)
                 outputs = model(images)
                 loss = criterion(outputs, labels)
                 ddp_val_loss[0] += loss.item()
@@ -74,14 +85,14 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
                 ddp_correct += (predicted == labels).sum().item()
 
         dist.all_reduce(ddp_val_loss, op=dist.ReduceOp.SUM)
-        dist.all_reduce(torch.tensor(ddp_correct).to(device), op=dist.ReduceOp.SUM)
-        dist.all_reduce(torch.tensor(ddp_total).to(device), op=dist.ReduceOp.SUM)
+        dist.all_reduce(torch.tensor(ddp_correct).to(rank), op=dist.ReduceOp.SUM)
+        dist.all_reduce(torch.tensor(ddp_total).to(rank), op=dist.ReduceOp.SUM)
 
         dist.barrier()
 
-        if device == 0:
+        if rank == 0:
             timeEnd = time.time()
-            print('Epoch: %d, Time: %f, Training Loss: %.3f, Validation Loss: %.3f, Validation Accuracy: %.3f %%' % \
+            print('Epoch: %d, Time: %fs, Training Loss: %.3f, Validation Loss: %.3f, Validation Accuracy: %.3f %%' % \
                   (epoch + 1, timeEnd-timeStart, ddp_train_loss[0] / ddp_train_loss[1], ddp_val_loss[0] / ddp_val_loss[1], 100 * ddp_correct / ddp_total))
     model.train()
 
@@ -89,7 +100,6 @@ def main(rank, world_size, args):
     setup(rank, world_size)
     # Load CIFAR10 dataset
     transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-
     download = True if rank == 0 else False
 
     trainset = torchvision.datasets.CIFAR10(root='/workspace/data', train=True, download=download, transform=transform)
@@ -118,8 +128,8 @@ def main(rank, world_size, args):
     model = model.to(rank)
     print_peak_memory("Memory allocated after creating local model", rank)
 
-    model = DDP(model, device_ids=[rank])
-    print_peak_memory("Memory allocated after creating DDP model", rank)
+    model = FSDP(model)
+    print_peak_memory("Memory allocated after creating FSDP model", rank)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -150,7 +160,7 @@ def main(rank, world_size, args):
             correct += (predicted == labels).sum().item()
 
     if rank == 0:
-        print('Accuracy of the network on the 10000 test images: %d %%' % (100 * correct / total))
+        print('Accuracy of the network on test images: %d %%' % (100 * correct / total))
 
     cleanup()
 
@@ -167,7 +177,6 @@ if __name__ == '__main__':
 
     world_size = torch.cuda.device_count()
     args.batch_size = int(args.batch_size / world_size)
-
     print("Local (per-GPU) Batch size:", args.batch_size)
 
     mp.spawn(main, args=(world_size, args), nprocs=world_size, join=True)
