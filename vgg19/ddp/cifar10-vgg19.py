@@ -41,6 +41,7 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
+            optimizer.zero_grad()
             if epoch==0:
                 print_peak_memory("Memory allocated before loss backward()", device)
             loss.backward()
