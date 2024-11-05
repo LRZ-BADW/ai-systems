@@ -7,6 +7,11 @@ import argparse
 from torchvision import models
 import time
 
+def print_peak_memory(prefix, device):
+    if device == 0:
+        print(f"{prefix}: {torch.cuda.memory_allocated(device) // 1e6}MB ")
+        print("Max. "+f"{prefix}: {torch.cuda.max_memory_allocated(device) // 1e6}MB ")
+
 def train_and_validate(model, trainloader, valloader, criterion, optimizer, device, num_epochs):
     
     for epoch in range(num_epochs):
@@ -19,8 +24,14 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             train_loss += loss.item()
+            if epoch==0:
+                print_peak_memory("Memory allocated before loss backward()", 0)
             loss.backward()
+            if epoch==0:
+                print_peak_memory("Memory allocated after loss backward() and before optimizer step()", 0)
             optimizer.step()
+            if epoch==0:
+                print_peak_memory("Memory allocated after optimizer step()", 0)
 
         # Validation step
         model.eval()
@@ -65,6 +76,8 @@ def main(args):
     # Load VGG19 model
     model = models.vgg19(num_classes=10)
     model = model.to(device)
+
+    print_peak_memory("Memory allocated after creating local model", 0)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
