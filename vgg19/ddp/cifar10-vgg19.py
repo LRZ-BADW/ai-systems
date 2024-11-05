@@ -11,6 +11,11 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 import os
 
+def print_peak_memory(prefix, device):
+    if device == 0:
+        print("Max."+f"{prefix}: {torch.cuda.max_memory_allocated(device) // 1e6}MB ")
+        print(f"{prefix}: {torch.cuda.memory_allocated(device) // 1e6}MB ")
+
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
@@ -36,8 +41,14 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
+            if epoch==0:
+                print_peak_memory("Memory allocated before loss backward()", device)
             loss.backward()
+            if epoch==0:
+                print_peak_memory("Memory allocated before optimizer step()", device)
             optimizer.step()
+            if epoch==0:
+                print_peak_memory("Memory allocated after optimizer step()", device)
             ddp_train_loss[0] += loss.item()
             ddp_train_loss[1] += len(data)
 
@@ -104,7 +115,10 @@ def main(rank, world_size, args):
     # Load VGG19 model
     model = models.vgg19(num_classes=10)
     model = model.to(rank)
+    print_peak_memory("Memory allocated after creating local model", rank)
+
     model = DDP(model, device_ids=[rank])
+    print_peak_memory("Memory allocated after creating DDP model", rank)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
