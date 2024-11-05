@@ -17,6 +17,7 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
     for epoch in range(num_epochs):
         # Training step
         train_loss = 0.0
+        timeStart = time.time()
         for i, data in enumerate(trainloader, 0):
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
@@ -49,7 +50,9 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
 
-        print('Epoch: %d, Training Loss: %.3f, Validation Loss: %.3f, Validation Accuracy: %.3f %%' % (epoch + 1, train_loss / len(trainloader), val_loss / len(valloader), 100 * correct / total))
+        timeEnd = time.time()
+        print('Epoch: %d, Time: %f s, Training Loss: %.3f, Validation Loss: %.3f, Validation Accuracy: %.3f %%' % \
+              (epoch + 1, timeEnd-timeStart, train_loss / len(trainloader), val_loss / len(valloader), 100 * correct / total))
         model.train()
 
 def main(args):
