@@ -162,10 +162,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     print("Parsed arguments:")
-    print("Batch size:", args.batch_size)
+    print("Global Batch size:", args.batch_size)
     print("Number of epochs:", args.epochs)
 
     world_size = torch.cuda.device_count()
     args.batch_size = int(args.batch_size / world_size)
-    
+
+    print("Local (per-GPU) Batch size:", args.batch_size)
+
     mp.spawn(main, args=(world_size, args), nprocs=world_size, join=True)
