@@ -26,15 +26,18 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-def train_and_validate(model, trainloader, valloader, criterion, optimizer, device, num_epochs):
+def train_and_validate(args, model, trainloader, valloader, criterion, optimizer, device, num_epochs):
 
     for epoch in range(num_epochs):
         # Training step
-        if device == 0:
-            timeStart = time.time()
+        init_start_event = torch.cuda.Event(enable_timing=True)
+        init_end_event = torch.cuda.Event(enable_timing=True)
 
         trainloader.sampler.set_epoch(epoch)
-        ddp_train_loss = torch.zeros(2).to(device)
+        ddp_train_loss = torch.zeros(1).to(device)
+
+        model.train()
+        init_start_event.record()
         for i, data in enumerate(trainloader, 0):
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
@@ -42,58 +45,65 @@ def train_and_validate(model, trainloader, valloader, criterion, optimizer, devi
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             optimizer.zero_grad()
-            if epoch==0:
+            if epoch==0 and i==0 and args.rank==0:
                 print_peak_memory("Memory allocated before loss backward()", device)
             loss.backward()
-            if epoch==0:
+            if epoch==0 and i==0 and args.rank==0:
                 print_peak_memory("Memory allocated before optimizer step()", device)
             optimizer.step()
-            if epoch==0:
+            if epoch==0 and i==0 and args.rank==0:
                 print_peak_memory("Memory allocated after optimizer step()", device)
-            ddp_train_loss[0] += loss.item()
-            ddp_train_loss[1] += len(data)
+            ddp_train_loss[0] += loss.detach()
 
-        dist.all_reduce(ddp_train_loss, op=dist.ReduceOp.SUM)
+        init_end_event.record()
+        step_time = init_start_event.elapsed_time(init_end_event)/1000
+
+        images_per_sec = torch.tensor(len(trainloader)*args.batch_size/(args.world_size*step_time)).to(device)
+        dist.reduce(images_per_sec, 0, op=dist.ReduceOp.SUM)
 
         # Validation step
         model.eval()
         ddp_correct = 0
         ddp_total = 0
         valloader.sampler.set_epoch(epoch)
-        ddp_val_loss = torch.zeros(2).to(device)
+        ddp_val_loss = torch.zeros(1).to(device)
         with torch.no_grad():
             for data in valloader:
                 images, labels = data
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
                 loss = criterion(outputs, labels)
-                ddp_val_loss[0] += loss.item()
-                ddp_val_loss[1] += len(data)
+                ddp_val_loss[0] += loss.detach()
                 _, predicted = torch.max(outputs.data, 1)
                 ddp_total += labels.size(0)
-                ddp_correct += (predicted == labels).sum().item()
+                ddp_correct += (predicted == labels).sum().detach()
 
-        dist.all_reduce(ddp_val_loss, op=dist.ReduceOp.SUM)
-        dist.all_reduce(torch.tensor(ddp_correct).to(device), op=dist.ReduceOp.SUM)
-        dist.all_reduce(torch.tensor(ddp_total).to(device), op=dist.ReduceOp.SUM)
+        dist.reduce(ddp_train_loss, 0, op=dist.ReduceOp.AVG)
+        ddp_val_acc = 100 * ddp_correct / ddp_total
 
-        dist.barrier()
+        dist.reduce(ddp_val_loss, 0, op=dist.ReduceOp.AVG)
+        dist.reduce(ddp_val_acc.to(device), 0, op=dist.ReduceOp.AVG)
 
         if device == 0:
-            timeEnd = time.time()
-            print('Epoch: %d, Time: %f, Training Loss: %.3f, Validation Loss: %.3f, Validation Accuracy: %.3f %%' % \
-                  (epoch + 1, timeEnd-timeStart, ddp_train_loss[0] / ddp_train_loss[1], ddp_val_loss[0] / ddp_val_loss[1], 100 * ddp_correct / ddp_total))
-    model.train()
+            print('Epoch: %d, Time: %f, Images-per-sec: %f img/s, Training Loss: %.3f, Validation Loss: %.3f, Validation Accuracy: %.3f %%' % \
+                  (epoch + 1, step_time, images_per_sec, ddp_train_loss[0], ddp_val_loss[0], ddp_val_acc))
 
-def main(rank, world_size, args):
-    setup(rank, world_size)
+def main(rank, args):
+    setup(rank, args.world_size)
+    args.rank = rank
     # Load CIFAR10 dataset
     transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
     download = True if rank == 0 else False
 
-    trainset = torchvision.datasets.CIFAR10(root='/workspace/data', train=True, download=download, transform=transform)
+    if rank == 0:
+        trainset = torchvision.datasets.CIFAR10(root='/workspace/data', train=True, download=download, transform=transform)
+        testset = torchvision.datasets.CIFAR10(root='/workspace/data', train=False, download=download, transform=transform)
     dist.barrier()
+
+    if rank != 0:
+        trainset = torchvision.datasets.CIFAR10(root='/workspace/data', train=True, download=download, transform=transform)
+        testset = torchvision.datasets.CIFAR10(root='/workspace/data', train=False, download=download, transform=transform)
 
     # Split trainset into train and validation sets
     train_size = int(0.8 * len(trainset))
@@ -101,14 +111,13 @@ def main(rank, world_size, args):
     trainset, valset = torch.utils.data.random_split(trainset, [train_size, val_size])
 
     # Create dataloaders for train and validation sets
-    train_sampler = torch.utils.data.distributed.DistributedSampler(trainset, num_replicas=world_size, rank=rank)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=False, num_workers=2, pin_memory=True, sampler=train_sampler)
+    train_sampler = torch.utils.data.distributed.DistributedSampler(trainset, num_replicas=args.world_size, rank=rank)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=int(args.batch_size/args.world_size), shuffle=False, num_workers=2, pin_memory=True, sampler=train_sampler)
 
-    val_sampler = torch.utils.data.distributed.DistributedSampler(valset, num_replicas=world_size, rank=rank)
-    valloader = torch.utils.data.DataLoader(valset, batch_size=args.batch_size, shuffle=False, num_workers=2, pin_memory=True, sampler=val_sampler)
+    val_sampler = torch.utils.data.distributed.DistributedSampler(valset, num_replicas=args.world_size, rank=rank)
+    valloader = torch.utils.data.DataLoader(valset, batch_size=int(args.batch_size/args.world_size), shuffle=False, num_workers=2, pin_memory=True, sampler=val_sampler)
 
-    testset = torchvision.datasets.CIFAR10(root='/workspace/data', train=False, download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=int(args.batch_size/args.world_size), shuffle=False, num_workers=2)
 
     #set device
     torch.cuda.set_device(rank)
@@ -130,7 +139,7 @@ def main(rank, world_size, args):
 
     # Training
     init_start_event.record()
-    train_and_validate(model, trainloader, valloader, criterion, optimizer, rank, args.epochs)
+    train_and_validate(args, model, trainloader, valloader, criterion, optimizer, rank, args.epochs)
 
     init_end_event.record()
 
@@ -162,12 +171,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     print("Parsed arguments:")
+
     print("Global Batch size:", args.batch_size)
+
     print("Number of epochs:", args.epochs)
 
-    world_size = torch.cuda.device_count()
-    args.batch_size = int(args.batch_size / world_size)
+    args.world_size = torch.cuda.device_count()
 
-    print("Local (per-GPU) Batch size:", args.batch_size)
+    print("Local (per-GPU) Batch size:", int(args.batch_size/args.world_size))
 
-    mp.spawn(main, args=(world_size, args), nprocs=world_size, join=True)
+    mp.spawn(main, args=((args,)), nprocs=args.world_size, join=True)
